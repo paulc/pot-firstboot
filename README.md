@@ -13,9 +13,11 @@ To configure container:
 
 # rc.conf variables
 
+```
 firstboot_pot_enable="YES"
 firstboot_pot_pkgs="pkg pkg..."
 firstboot_pot_user="name"
 firstboot_pot_pk="key.."
 firstboot_pot_ns="ns ns"
+```
 
