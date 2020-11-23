@@ -1,0 +1,92 @@
+#!/bin/sh
+
+# KEYWORD: firstboot
+# PROVIDE: firstboot_pot
+# REQUIRE: NETWORKING
+# BEFORE: LOGIN
+
+#
+# firstboot_pot_enable="YES"
+# firstboot_pot_pkgs="pkg pkg..."
+# firstboot_pot_user="user"
+# firstboot_pot_pk="pk"
+# firstboot_pot_ns="ns ns ns"
+
+. /etc/rc.subr
+
+: ${firstboot_pot_enable:="NO"}
+
+name="firstboot_pot"
+rcvar=firstboot_pot_enable
+start_cmd="firstboot_pot_run"
+stop_cmd=":"
+
+firstboot_pot_run()
+{
+    # Set NS first
+    if [ ! -z "${firstboot_pot_ns}" ]; then
+        echo "Setting Nameservers:"
+        printf 'nameserver %s\n' ${firstboot_pot_ns} | tee /etc/resolv.conf
+    fi
+    
+    # Test resolver
+    while ! ping6 -X 2 -c1 freebsd.org; do
+        sleep 1
+    done
+
+    # Update
+    freebsd-update fetch --not-running-from-cron | cat
+    freebsd-update install --not-running-from-cron || echo No updates available
+
+    # Bootstrap and update pkg to ensure synchronization with the repository
+    env ASSUME_ALWAYS_YES=YES pkg bootstrap -f | cat
+    env ASSUME_ALWAYS_YES=YES pkg update -f | cat
+
+    # Install requested packages, if any
+    for package in ${firstboot_pot_pkgs}; do
+            env ASSUME_ALWAYS_YES=YES pkg install ${package} </dev/null |
+                cat
+    done
+
+    # Short MOTD
+    echo Setting /etc/motd
+    uname -a | tee /etc/motd
+
+    # Change root shell to /bin/sh
+    chsh -s /bin/sh root
+
+    # Setup services
+    sysrc sshd_enable=YES sendmail_enable=NONE
+
+    # Clear old ssh keys
+    rm -f /etc/ssh/*key /etc/ssh/*key.pub
+    # Start sshd to create host keys
+    service sshd start
+
+    # Setup login user
+    if [ ! -z "${firstboot_pot_user}" ]; then
+        pw useradd -n ${firstboot_pot_user} -m -s /bin/sh -h -
+        mkdir -p mkdir /home/${firstboot_pot_user}/.ssh
+        if [ ! -z "${firstboot_pot_pk}" ]; then
+            echo ${firstboot_pot_pk} | tee /home/${firstboot_pot_user}/.ssh/authorized_keys
+        fi
+        cat <<__EOM | tee /home/${firstboot_pot_user}/.profile
+export EDITOR=vi
+set -o emacs
+alias ls='ls -F'
+PS1='[$USER@\h] \w \$ '
+__EOM
+            cat <<__EOM | tee /home/${firstboot_pot_user}/.exrc
+set ai
+set ruler
+set sw=4
+set ts=4
+set showmode
+__EOM
+            chmod -R og-rwx /home/${firstboot_pot_user}/.ssh
+            chown -R ${firstboot_pot_user}:${firstboot_pot_user} /home/${firstboot_pot_user}
+        fi
+}
+
+load_rc_config $name
+run_rc_command "$1"
