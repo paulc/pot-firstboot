@@ -5,12 +5,14 @@
 # REQUIRE: NETWORKING
 # BEFORE: LOGIN
 
-#
 # firstboot_pot_enable="YES"
-# firstboot_pot_pkgs="pkg pkg..."
+# firstboot_pot_ns="ns1 ns2..."
+# firstboot_pot_update="YES"
+# firstboot_pot_root_pk="ssh-ed25519..."
 # firstboot_pot_user="user"
-# firstboot_pot_pk="pk"
-# firstboot_pot_ns="ns ns ns"
+# firstboot_pot_user_pk="ssh-ed25519..."
+# firstboot_pot_pkgs="pkg pkg..."
+# firstboot_pot_cmd="cmd"
 
 . /etc/rc.subr
 
@@ -29,63 +31,50 @@ firstboot_pot_run()
         printf 'nameserver %s\n' ${firstboot_pot_ns} | tee /etc/resolv.conf
     fi
     
-    # Test resolver
-    while ! ping6 -X 2 -c1 freebsd.org; do
+    # Test network
+    _c=0
+    while [ $((_c=_c+1)) -lt 5 ] && ! ping6 -X2 -c1 freebsd.org; do
         sleep 1
     done
 
     # Update
-    freebsd-update fetch --not-running-from-cron | cat
-    freebsd-update install --not-running-from-cron || echo No updates available
+    if [ ${firstboot_pot_update} = YES ]; then
+        freebsd-update fetch --not-running-from-cron | cat
+        freebsd-update install --not-running-from-cron || echo No updates available
+    fi
 
-    # Bootstrap and update pkg to ensure synchronization with the repository
-    env ASSUME_ALWAYS_YES=YES pkg bootstrap -f | cat
-    env ASSUME_ALWAYS_YES=YES pkg update -f | cat
+    # Packages
+    if [ ! -z "${firstboot_pot_pkgs}" ]; then
+        # Bootstrap and update pkg
+        env ASSUME_ALWAYS_YES=YES pkg bootstrap -f | cat
+        env ASSUME_ALWAYS_YES=YES pkg update -f | cat
+        # Install packages
+        for package in ${firstboot_pot_pkgs}; do
+            env ASSUME_ALWAYS_YES=YES pkg install ${package} </dev/null | cat
+        done
+    fi
 
-    # Install requested packages, if any
-    for package in ${firstboot_pot_pkgs}; do
-            env ASSUME_ALWAYS_YES=YES pkg install ${package} </dev/null |
-                cat
-    done
+    # Root ssh key
+    if [ ! -z "${firstboot_pot_root_pk}" ]; then
+        umask 077
+        mkdir /root/.ssh
+        echo ${firstboot_pot_root_pk} | tee /root/.ssh/authorized_keys
+    fi
 
-    # Short MOTD
-    echo Setting /etc/motd
-    uname -a | tee /etc/motd
-
-    # Change root shell to /bin/sh
-    chsh -s /bin/sh root
-
-    # Setup services
-    sysrc sshd_enable=YES sendmail_enable=NONE
-
-    # Clear old ssh keys
-    rm -f /etc/ssh/*key /etc/ssh/*key.pub
-    # Start sshd to create host keys
-    service sshd start
-
-    # Setup login user
+    # User setup
     if [ ! -z "${firstboot_pot_user}" ]; then
+        umask 077
         pw useradd -n ${firstboot_pot_user} -m -s /bin/sh -h -
         mkdir -p mkdir /home/${firstboot_pot_user}/.ssh
-        if [ ! -z "${firstboot_pot_pk}" ]; then
-            echo ${firstboot_pot_pk} | tee /home/${firstboot_pot_user}/.ssh/authorized_keys
+        if [ ! -z "${firstboot_pot_user_pk}" ]; then
+            echo ${firstboot_pot_user_pk} | tee /home/${firstboot_pot_user}/.ssh/authorized_keys
         fi
-        cat <<__EOM | tee /home/${firstboot_pot_user}/.profile
-export EDITOR=vi
-set -o emacs
-alias ls='ls -F'
-PS1='[$USER@\h] \w \$ '
-__EOM
-            cat <<__EOM | tee /home/${firstboot_pot_user}/.exrc
-set ai
-set ruler
-set sw=4
-set ts=4
-set showmode
-__EOM
-            chmod -R og-rwx /home/${firstboot_pot_user}/.ssh
-            chown -R ${firstboot_pot_user}:${firstboot_pot_user} /home/${firstboot_pot_user}
-        fi
+    fi
+
+    # Run firstboot command
+    if [ ! -z "${firstboot_pot_cmd}" ]; then
+        /bin/sh -c "${firstboot_pot_cmd}" 
+    fi
 }
 
 load_rc_config $name
