@@ -65,7 +65,7 @@ firstboot_pot_run()
     if [ ! -z "${firstboot_pot_user}" ]; then
         umask 077
         pw useradd -n ${firstboot_pot_user} -m -s /bin/sh -h -
-        mkdir -p mkdir /home/${firstboot_pot_user}/.ssh
+        mkdir /home/${firstboot_pot_user}/.ssh
         if [ ! -z "${firstboot_pot_user_pk}" ]; then
             echo ${firstboot_pot_user_pk} | tee /home/${firstboot_pot_user}/.ssh/authorized_keys
         fi
