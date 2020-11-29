@@ -1,0 +1,28 @@
+#!/bin/sh
+
+# PROVIDE: check_network
+# REQUIRE: NETWORKING
+# BEFORE: LOGIN
+
+# check_network_enable="YES"
+
+. /etc/rc.subr
+
+: ${firstboot_pot_enable:="NO"}
+
+name=check_network
+rcvar=check_network_enable
+start_cmd="check_network_run"
+stop_cmd=":"
+
+check_network_run()
+{
+    # Check network
+    _c=0
+    while [ $((_c=_c+1)) -lt 5 ] && ! ping6 -X2 -c1 freebsd.org; do
+        sleep 1
+    done
+}
+
+load_rc_config $name
+run_rc_command "$1"
