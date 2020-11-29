@@ -69,6 +69,7 @@ firstboot_pot_run()
         if [ ! -z "${firstboot_pot_user_pk}" ]; then
             echo ${firstboot_pot_user_pk} | tee /home/${firstboot_pot_user}/.ssh/authorized_keys
         fi
+        chown -R ${firstboot_pot_user}:${firstboot_pot_user} /home/${firstboot_pot_user}/.ssh
     fi
 
     # Run firstboot command
